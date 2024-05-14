@@ -154,3 +154,6 @@ class System(SimObject):
         "Base of the 64KiB PA range used for "
         "memory-mapped m5ops. Set to 0 to disable.",
     )
+
+    # @PIM
+    pim_type = Param.String("default", "used to determine if a PIM operation is suitable for execution")

@@ -95,6 +95,9 @@ void m5Syscall(ThreadContext *tc);
 void togglesync(ThreadContext *tc);
 void triggerWorkloadEvent(ThreadContext *tc);
 
+// @PIM
+void PIMProcess(ThreadContext *tc, uint64_t id);
+
 /**
  * Execute a decoded M5 pseudo instruction
  *
@@ -213,7 +216,12 @@ pseudoInstWork(ThreadContext *tc, uint8_t func, uint64_t &result)
         invokeSimcall<ABI>(tc, workend);
         return true;
 
-      case M5OP_RESERVED1:
+      //case M5OP_RESERVED1:
+      // @PIM
+      case M5OP_PIM_PROCESS:
+        invokeSimcall<ABI>(tc, PIMProcess);
+        return true;
+
       case M5OP_RESERVED2:
       case M5OP_RESERVED3:
       case M5OP_RESERVED4:

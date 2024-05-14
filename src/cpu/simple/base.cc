@@ -77,6 +77,9 @@
 #include "sim/stats.hh"
 #include "sim/system.hh"
 
+// @PIM
+#include "debug/PIM.hh"
+
 namespace gem5
 {
 
@@ -94,6 +97,7 @@ BaseSimpleCPU::BaseSimpleCPU(const BaseSimpleCPUParams &p)
             thread = new SimpleThread(
                 this, i, p.system, p.mmu, p.isa[i], p.decoder[i]);
         } else {
+            std::cout << p.workload[i] << std::endl;
             thread = new SimpleThread(
                 this, i, p.system, p.workload[i], p.mmu, p.isa[i],
                 p.decoder[i]);

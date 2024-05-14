@@ -343,6 +343,15 @@ class TimingSimpleCPU : public BaseSimpleCPU
         virtual const char *description() const;
     };
 
+    // @PIM
+    EventFunctionWrapper cacheFlushEvent;
+    void processCacheFlushEvent();
+
+    EventFunctionWrapper activatePIMCPUEvent;
+    void processActivatePIMCPUEvent();
+
+    int pim_cpu_to_activate;
+
     /**
      * Check if a system is in a drained state.
      *
@@ -373,6 +382,9 @@ class TimingSimpleCPU : public BaseSimpleCPU
      * @returns true if the CPU is drained, false otherwise.
      */
     bool tryCompleteDrain();
+
+    // @PIM
+    void PIMProcess(ThreadContext *tc, int id) override;
 };
 
 } // namespace gem5

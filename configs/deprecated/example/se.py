@@ -134,6 +134,9 @@ parser = argparse.ArgumentParser()
 Options.addCommonOptions(parser)
 Options.addSEOptions(parser)
 
+# @PIM
+Options.addPIMOptions(parser)
+
 if "--ruby" in sys.argv:
     Ruby.define_options(parser)
 

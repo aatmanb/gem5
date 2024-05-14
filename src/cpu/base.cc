@@ -73,6 +73,9 @@
 // Hack
 #include "sim/stat_control.hh"
 
+// @PIM
+#include "debug/PIM.hh"
+
 namespace gem5
 {
 
@@ -142,7 +145,9 @@ BaseCPU::BaseCPU(const Params &p, bool is_checker)
       syscallRetryLatency(p.syscallRetryLatency),
       pwrGatingLatency(p.pwr_gating_latency),
       powerGatingOnIdle(p.power_gating_on_idle),
-      enterPwrGatingEvent([this]{ enterPwrGating(); }, name())
+      enterPwrGatingEvent([this]{ enterPwrGating(); }, name()),
+      is_pim(p.is_pim),
+      host_id(p.host_id)
 {
     // if Python did not provide a valid ID, do it here
     if (_cpuId == -1 ) {
@@ -215,6 +220,7 @@ BaseCPU::BaseCPU(const Params &p, bool is_checker)
         commitStatptr->cpi = baseStats.numCycles / commitStatptr->numInsts;
         commitStats.emplace_back(commitStatptr);
     }
+    DPRINTF(PIM, "BaseCPU::2\n");
 }
 
 void

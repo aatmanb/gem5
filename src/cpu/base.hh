@@ -684,6 +684,19 @@ class BaseCPU : public ClockedObject
     const bool powerGatingOnIdle;
     EventFunctionWrapper enterPwrGatingEvent;
 
+  // @PIM
+  public:
+    bool is_pim;
+    int host_id;
+
+    virtual void PIMProcess(ThreadContext *tc, int id) {
+        fatal("Base CPU cannot PIMProcess");
+    }
+
+    virtual void HostProcess(ThreadContext *tc) {
+        fatal("Base CPU cannot execute HostProcess");
+    }
+
 
   public:
     struct FetchCPUStats : public statistics::Group

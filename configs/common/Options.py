@@ -898,3 +898,18 @@ def addFSOptions(parser):
         action="store_true",
         help="Wait for remote GDB to connect.",
     )
+
+# @PIM
+def addPIMOptions(parser):
+    parser.add_argument("--enable-pim", action="store_true")
+    parser.add_argument("--pim-type", default="cpu",
+                      choices=["cpu", "kernel", "hybrid"],
+                        help = "type of pim kernel inside the memory to use")
+    parser.add_argument("--kernel-type", default="adder",
+                      choices=["adder", "multiplier", "divider"],
+              help = "type of pim kernel inside the memory to use")
+    parser.add_argument("--num-pim-kernels", type=int, default=0,
+                  help="Number of in-memory kernels")
+    parser.add_argument("--num-pim-processors", type=int, default=0,
+                  help="Number of in-memory processors")
+    parser.add_argument("--coherence-granularity", type=str, default="64B")

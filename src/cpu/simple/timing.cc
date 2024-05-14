@@ -57,6 +57,9 @@
 #include "sim/full_system.hh"
 #include "sim/system.hh"
 
+// @PIM
+#include "debug/PIM.hh"
+
 namespace gem5
 {
 
@@ -76,7 +79,9 @@ TimingSimpleCPU::TimingCPUPort::TickEvent::schedule(PacketPtr _pkt, Tick t)
 TimingSimpleCPU::TimingSimpleCPU(const BaseTimingSimpleCPUParams &p)
     : BaseSimpleCPU(p), fetchTranslation(this), icachePort(this),
       dcachePort(this), ifetch_pkt(NULL), dcache_pkt(NULL), previousCycle(0),
-      fetchEvent([this]{ fetch(); }, name())
+      fetchEvent([this]{ fetch(); }, name()),
+      cacheFlushEvent([this]{processCacheFlushEvent();},name()),
+      activatePIMCPUEvent([this]{processActivatePIMCPUEvent();},name())
 {
     _status = Idle;
 }
@@ -1316,6 +1321,54 @@ TimingSimpleCPU::htmSendAbortSignal(ThreadID tid, uint64_t htm_uid,
     memcpy (data, &rc, size);
 
     sendData(req, data, nullptr, true);
+}
+
+void TimingSimpleCPU::PIMProcess(ThreadContext *tc, int id) {
+    DPRINTF(PIM, "Activate PIM CPU id: %d\n", id);
+
+    if (is_pim) {
+        warn("PIM CPU trying to activate another PIM CPU which is not possible\n");
+        return;
+    }
+
+    BaseCPU *pim_cpu=(BaseCPU*)SimObject::find(("system.pim_cpu"+std::to_string(id)).data());
+    if (!pim_cpu) fatal("No PIM CPUs found");
+
+    // TODO
+    //pim_cpu->takeOverFrom(this);
+    DPRINTF(PIM, "PIM CPU %d has taken over\n", id);
+
+    pim_cpu_to_activate = id;
+    //this->haltContext(curThread);
+    schedule(cacheFlushEvent, curTick() + 10000); // num_ticks = CPU freq in GHz * 1000
+}
+
+void
+TimingSimpleCPU::processCacheFlushEvent() {
+    DPRINTF(PIM, "inside processCacheFlushEvent:: flushing host CPU caches before activating PIM CPU %d\n", pim_cpu_to_activate);
+    assert(!is_pim);
+    //for(int i=0; i<pCaches.size(); i++) {
+    //    if (!pCaches[i]->flushAll()) {
+    //        DPRINTF(PIM, "Error while flushing cache %d\n", i);
+    //    }
+    //    else {
+    //        DPRINTF(PIM, "Successfully flushed cache %d\n", i);
+    //    }
+    //}
+
+    schedule(activatePIMCPUEvent, curTick());
+}
+
+void
+TimingSimpleCPU::processActivatePIMCPUEvent() {
+    assert(!is_pim);
+    DPRINTF(PIM, "inside processActivatePIMCPUEvent:: activating PIM CPU\n");
+    BaseCPU *pim_cpu=(BaseCPU*)SimObject::find(("system.pim_cpu"+std::to_string(pim_cpu_to_activate)).data());
+    if(!pim_cpu) fatal("Found no PIM processors.");
+    
+    //pim_cpu->host_id=this->_cpuId;
+    //pim_cpu->activateContext(0);
+    DPRINTF(PIM, "PIM CPU activated context\n");
 }
 
 } // namespace gem5

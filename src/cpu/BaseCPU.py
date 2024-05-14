@@ -164,6 +164,10 @@ class BaseCPU(ClockedObject):
     _uncached_interrupt_response_ports = []
     _uncached_interrupt_request_ports = []
 
+    # @PIM
+    is_pim = Param.Bool(False, "is a PIM CPU")
+    host_id = Param.Int(-1, "Host CPU which controls this PIM CPU")
+
     def createInterruptController(self):
         self.interrupts = [
             self.ArchInterrupts() for i in range(self.numThreads)
@@ -234,6 +238,8 @@ class BaseCPU(ClockedObject):
                 )
         if len(self.decoder) != 0:
             raise RuntimeError("Decoders should not be set up manually")
+        print(f"CPU-{self.socket_id}-{self.cpu_id}")
+        print("creating Decoder")
         self.decoder = list([self.ArchDecoder(isa=isa) for isa in self.isa])
         if self.checker != NULL:
             self.checker.createThreads()
