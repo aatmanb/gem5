@@ -1360,6 +1360,9 @@ class BaseCache : public ClockedObject
      */
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
+    
+    // @PIM
+    bool flush(); // flush all dirty data and invalidate entire cache
 };
 
 /**

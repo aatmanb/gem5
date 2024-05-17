@@ -623,13 +623,19 @@ BaseCPU::takeOverFrom(BaseCPU *oldCPU)
 
     ThreadID size = threadContexts.size();
     for (ThreadID i = 0; i < size; ++i) {
+        DPRINTF(PIM, "taking over thread by thread: %d\n", i);
         ThreadContext *newTC = threadContexts[i];
         ThreadContext *oldTC = oldCPU->threadContexts[i];
 
         newTC->getIsaPtr()->setThreadContext(newTC);
 
+        DPRINTF(PIM, "ntc.getProcessPtr: %p, otc.getProcessPtr: %p\n", newTC->getProcessPtr(), oldTC->getProcessPtr());
+        // Override the process initially assigned to the PIM CPU by assigning it the process from its corresponding Host CPU
+        newTC->setProcessPtr(oldTC->getProcessPtr());
+        DPRINTF(PIM, "ntc.getProcessPtr: %p, otc.getProcessPtr: %p\n", newTC->getProcessPtr(), oldTC->getProcessPtr());
         newTC->takeOverFrom(oldTC);
 
+        if(!(oldCPU->is_pim||is_pim)){
         assert(newTC->contextId() == oldTC->contextId());
         assert(newTC->threadId() == oldTC->threadId());
         system->replaceThreadContext(newTC, newTC->contextId());
@@ -642,6 +648,7 @@ BaseCPU::takeOverFrom(BaseCPU *oldCPU)
         */
 
         newTC->getMMUPtr()->takeOverFrom(oldTC->getMMUPtr());
+        }
 
         // Checker whether or not we have to transfer CheckerCPU
         // objects over in the switch
@@ -658,12 +665,14 @@ BaseCPU::takeOverFrom(BaseCPU *oldCPU)
     }
     oldCPU->interrupts.clear();
 
+    if (!is_pim) {
     // All CPUs have an instruction and a data port, and the new CPU's
     // ports are dangling while the old CPU has its ports connected
     // already. Unbind the old CPU and then bind the ports of the one
     // we are switching to.
     getInstPort().takeOverFrom(&oldCPU->getInstPort());
     getDataPort().takeOverFrom(&oldCPU->getDataPort());
+    }
 
     // Switch over the reset line as well, if necessary.
     if (oldCPU->modelResetPort.isConnected())

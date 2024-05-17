@@ -63,6 +63,9 @@
 #include "params/WriteAllocator.hh"
 #include "sim/cur_tick.hh"
 
+// @PIM
+#include "debug/PIM.hh"
+
 namespace gem5
 {
 
@@ -2739,6 +2742,32 @@ WriteAllocator::updateMode(Addr write_addr, unsigned write_size,
         resetDelay(blk_addr);
     }
     nextAddr = write_addr + write_size;
+}
+
+bool
+BaseCache::flush() {
+    DPRINTF(PIM, "flushing entire cache\n");
+    std::vector<std::tuple<Addr,CacheBlk*>> dirty_blks = tags->getDirtyBlks();
+    Request::Flags flags = 0;
+    RequestPtr req;
+    for (auto blk: dirty_blks) {
+        req = std::make_shared<Request>(std::get<0>(blk), blkSize, flags, 0);
+        // TODO: check if MemCmd is set properly
+        PacketPtr pkt = new Packet(req, MemCmd::WriteReq);
+        uint8_t *empty = new uint8_t[blkSize];
+        pkt->dataDynamic(empty);
+        pkt->setDataFromBlock(std::get<1>(blk)->data, blkSize);
+        memSidePort.sendFunctional(pkt)memSidePort.sendTimingReq(pkt);
+        delete pkt;
+        //std::get<1>(blk)->status &= ~std::get<1>(blk)->BlkDirty;
+        std::get<1>(blk)->clearCoherenceBits(CacheBlk::CoherenceBits::DirtyBit);
+    }
+    //tags->forEachBlk(tags->invalidateVisitor);
+    DPRINTF(PIM, "done flushing entire cache\n");
+    tags->invalidateAll();
+    DPRINTF(PIM, "done invalidating entire cache\n");
+
+    return true;
 }
 
 } // namespace gem5

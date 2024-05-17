@@ -62,6 +62,9 @@
 #include "mem/packet.hh"
 #include "params/BaseSetAssoc.hh"
 
+// @PIM
+#include "debug/PIM.hh"
+
 namespace gem5
 {
 
@@ -240,6 +243,37 @@ class BaseSetAssoc : public BaseTags
             }
         }
         return false;
+    }
+    
+    // @PIM
+    std::vector<std::tuple<Addr,CacheBlk*>> getDirtyBlks() override {
+        std::vector<std::tuple<Addr,CacheBlk*>> dirty_blks;
+        Addr address;
+        DPRINTF(PIM, "inside getDirtyBlks()\n");
+        for (CacheBlk& blk: blks) {
+            if (blk.isSet(CacheBlk::CoherenceBits::DirtyBit)) {
+                address = regenerateBlkAddr(&blk);
+                dirty_blks.push_back(std::make_tuple(address, &blk));
+                DPRINTF(PIM, "found dirty blk at address: 0x%x, data: 0x%x\n", address, *(blk.data));
+            }
+        }
+        return dirty_blks;
+    }
+    
+    void invalidateAll() override {
+        Addr address;
+        for (CacheBlk& blk_temp : blks) {
+            if (blk_temp.isSet(CacheBlk::CoherenceBits::DirtyBit)) {
+                warn_once("Invalidating dirty cache lines. Expect things to break\n");
+            }
+
+            if (blk_temp.isValid()) {
+                address = regenerateBlkAddr(&blk_temp);
+                DPRINTF(PIM, "found valid blk at address: 0x%x, data: 0x%x\n", address, *(blk_temp.data));
+                invalidate(&blk_temp);
+                blk_temp.invalidate();
+            }
+        }
     }
 };
 

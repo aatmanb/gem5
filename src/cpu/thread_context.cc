@@ -53,6 +53,9 @@
 #include "params/BaseCPU.hh"
 #include "sim/full_system.hh"
 
+// @PIM
+#include "debug/PIM.hh"
+
 namespace gem5
 {
 
@@ -251,6 +254,7 @@ unserialize(ThreadContext &tc, CheckpointIn &cp)
 void
 takeOverFrom(ThreadContext &ntc, ThreadContext &otc)
 {
+    DPRINTF(PIM, "inside threadContext::takeoverfrom\n");
     assert(ntc.getProcessPtr() == otc.getProcessPtr());
 
     ntc.setStatus(otc.status());

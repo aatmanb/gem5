@@ -59,6 +59,7 @@
 
 // @PIM
 #include "debug/PIM.hh"
+#include "mem/cache/cache.hh"
 
 namespace gem5
 {
@@ -1335,11 +1336,11 @@ void TimingSimpleCPU::PIMProcess(ThreadContext *tc, int id) {
     if (!pim_cpu) fatal("No PIM CPUs found");
 
     // TODO
-    //pim_cpu->takeOverFrom(this);
+    pim_cpu->takeOverFrom(this);
     DPRINTF(PIM, "PIM CPU %d has taken over\n", id);
 
     pim_cpu_to_activate = id;
-    //this->haltContext(curThread);
+    this->haltContext(curThread);
     schedule(cacheFlushEvent, curTick() + 10000); // num_ticks = CPU freq in GHz * 1000
 }
 
@@ -1355,7 +1356,17 @@ TimingSimpleCPU::processCacheFlushEvent() {
     //        DPRINTF(PIM, "Successfully flushed cache %d\n", i);
     //    }
     //}
+   
+    // Flush private L1 data cache. No need to flush Icache because it is read-only
+    // TODO: How to flush common L2 cache when the system has one 
+    Cache* cache = (Cache*)SimObject::find("system.cpu.dcache");
+    if(!cache) {
+        cache = (Cache*)SimObject::find(("system.cpu"+std::to_string(_cpuId)+".dcache").data());
+        if (!cache) fatal("No L1 cache in CPU %d\n", _cpuId);
+    }
 
+    cache->flush();
+    
     schedule(activatePIMCPUEvent, curTick());
 }
 
@@ -1366,8 +1377,8 @@ TimingSimpleCPU::processActivatePIMCPUEvent() {
     BaseCPU *pim_cpu=(BaseCPU*)SimObject::find(("system.pim_cpu"+std::to_string(pim_cpu_to_activate)).data());
     if(!pim_cpu) fatal("Found no PIM processors.");
     
-    //pim_cpu->host_id=this->_cpuId;
-    //pim_cpu->activateContext(0);
+    pim_cpu->host_id=this->_cpuId;
+    pim_cpu->activateContext(0);
     DPRINTF(PIM, "PIM CPU activated context\n");
 }
 

@@ -92,7 +92,10 @@ BaseSimpleCPU::BaseSimpleCPU(const BaseSimpleCPUParams &p)
 {
     SimpleThread *thread;
 
+    DPRINTF(PIM, "Constructing BaseSimpleCPU::cpu_obj_pointer: %p, cpu_id: %d is_pim: %d, num_threads: %d\n", this, _cpuId, is_pim, numThreads);
+
     for (unsigned i = 0; i < numThreads; i++) {
+        DPRINTF(PIM, "thread_num: %d, workload: %p\n", i, p.workload[i]);
         if (FullSystem) {
             thread = new SimpleThread(
                 this, i, p.system, p.mmu, p.isa[i], p.decoder[i]);

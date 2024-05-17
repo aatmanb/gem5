@@ -55,6 +55,9 @@
 #include "sim/sim_exit.hh"
 #include "sim/system.hh"
 
+// @PIM
+#include "debug/PIM.hh"
+
 namespace gem5
 {
 
@@ -306,6 +309,26 @@ BaseTags::BaseTagStats::preDumpStats()
     statistics::Group::preDumpStats();
 
     tags.computeStats();
+}
+
+// @PIM
+std::vector<std::tuple<Addr,CacheBlk*>>
+BaseTags::getDirtyBlks() 
+{
+    assert(0);
+    std::vector<std::tuple<Addr,CacheBlk*>> dirty_blks;
+    //for (auto blk: blks) {
+    //    if (blk.isDirty()) {
+    //        address = indexingPolicy->regenerateAddr(blk.tag, static_cast<ReplaceableEntry*>(&blk));
+    //        auto temp = std::make_tuple(address, &blk);
+    //    }
+    //}
+    return dirty_blks;
+}
+
+void
+BaseTags::invalidateAll() {
+    assert(0);
 }
 
 } // namespace gem5

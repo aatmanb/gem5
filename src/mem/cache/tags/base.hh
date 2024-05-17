@@ -363,6 +363,15 @@ class BaseTags : public ClockedObject
      * @param blk The input block
      */
     void computeStatsVisitor(CacheBlk &blk);
+
+  // @PIM
+  public:
+    /**
+     * Returns all dirty blocks in the cache
+     */
+    virtual std::vector<std::tuple<Addr,CacheBlk*>> getDirtyBlks();
+    virtual void invalidateAll();
+
 };
 
 } // namespace gem5
