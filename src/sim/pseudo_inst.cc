@@ -623,5 +623,20 @@ PIMProcess(ThreadContext *tc, uint64_t id)
     tc->getCpuPtr()->PIMProcess(tc, id);
 }
 
+void
+HostProcess(ThreadContext *tc, uint64_t id)
+{
+    DPRINTF(PseudoInst, "Activating Host Processor %d\n", id);
+    //std::string pim_type = tc->getCpuPtr()->system->pim_type;
+
+    //if(pim_type=="default")
+    //    fatal("PIMProcess command cannot be executed at none-PIM systems.");
+
+    //if(pim_type=="kernel")
+    //    fatal("PIMProcess command cannot be executed when in-memory processing units are logic.");
+
+    tc->getCpuPtr()->HostProcess(tc, id);
+}
+
 } // namespace pseudo_inst
 } // namespace gem5

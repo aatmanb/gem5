@@ -454,10 +454,10 @@ class ResponsePort : public Port, public AtomicResponseProtocol,
     sendTimingResp(PacketPtr pkt)
     {
         try {
-            _requestPort->removeTrace(pkt);
+            //_requestPort->removeTrace(pkt);
             bool succ = TimingResponseProtocol::sendResp(_requestPort, pkt);
-            if (!succ)
-                _requestPort->addTrace(pkt);
+            //if (!succ)
+            //    _requestPort->addTrace(pkt);
             return succ;
         } catch (UnboundPortException) {
             reportUnbound();
@@ -603,10 +603,10 @@ inline bool
 RequestPort::sendTimingReq(PacketPtr pkt)
 {
     try {
-        addTrace(pkt);
+        //addTrace(pkt);
         bool succ = TimingRequestProtocol::sendReq(_responsePort, pkt);
-        if (!succ)
-            removeTrace(pkt);
+        //if (!succ)
+        //    removeTrace(pkt);
         return succ;
     } catch (UnboundPortException) {
         reportUnbound();

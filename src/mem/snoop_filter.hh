@@ -330,6 +330,12 @@ class SnoopFilter : public SimObject
         statistics::Scalar hitSingleSnoops;
         statistics::Scalar hitMultiSnoops;
     } stats;
+
+  public:
+    //Populated in lookupRequest when a new SF entry is created.
+    // It stores whether the pkt is sent by a cache or not. This information is used by updateRespose() to decide whether to check the SF or not.
+    // Since, SF entry is allocated only for packets from cache, updateRespose() will not check SF if the respose corresponds to a request not sent by a cache.
+    std::unordered_map<Addr, std::tuple<bool,int>> fromCache;
 };
 
 inline SnoopFilter::SnoopMask

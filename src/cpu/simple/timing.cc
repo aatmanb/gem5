@@ -1328,20 +1328,46 @@ void TimingSimpleCPU::PIMProcess(ThreadContext *tc, int id) {
     DPRINTF(PIM, "Activate PIM CPU id: %d\n", id);
 
     if (is_pim) {
-        warn("PIM CPU trying to activate another PIM CPU which is not possible\n");
+        warn("PIM CPU id %d trying to activate PIM CPU id %d. Only Host CPU can activate PIM CPU\n", _cpuId, id);
         return;
     }
 
-    BaseCPU *pim_cpu=(BaseCPU*)SimObject::find(("system.pim_cpu"+std::to_string(id)).data());
+    
+    BaseCPU *pim_cpu;
+    pim_cpu = (BaseCPU*)SimObject::find(("system.pim_cpu"+std::to_string(id)).data());
+    // If there is only 1 CPU, gem5 doesn't use the id
+    if (!pim_cpu) pim_cpu = (BaseCPU*)SimObject::find(("system.pim_cpu"));
     if (!pim_cpu) fatal("No PIM CPUs found");
 
-    // TODO
     pim_cpu->takeOverFrom(this);
     DPRINTF(PIM, "PIM CPU %d has taken over\n", id);
 
     pim_cpu_to_activate = id;
     this->haltContext(curThread);
     schedule(cacheFlushEvent, curTick() + 10000); // num_ticks = CPU freq in GHz * 1000
+}
+
+void TimingSimpleCPU::HostProcess(ThreadContext *tc, int id) {
+    DPRINTF(PIM, "Activate Host CPU id: %d\n", id);
+
+    if (!is_pim) {
+        warn("Host CPU id %d trying to activate Host CPU id %d. Only PIM CPU can activate Host CPU\n", _cpuId, id);
+        return;
+    }
+
+    BaseCPU *host_cpu;
+    host_cpu = (BaseCPU*)SimObject::find(("system.cpu"+std::to_string(id)).data());
+    // If there is only 1 CPU, gem5 doesn't use the id
+    if (!host_cpu) host_cpu = (BaseCPU*)SimObject::find(("system.cpu"));
+    if (!host_cpu) fatal("Host CPU %d not found", id);
+
+    host_cpu->takeOverFrom(this);
+    DPRINTF(PIM, "Host CPU %d has taken over\n", id);
+
+    //pim_cpu_to_activate = id;
+    this->haltContext(curThread);
+    //schedule(cacheFlushEvent, curTick() + 10000); // num_ticks = CPU freq in GHz * 1000
+    host_cpu->activateContext(0);
 }
 
 void
@@ -1374,7 +1400,9 @@ void
 TimingSimpleCPU::processActivatePIMCPUEvent() {
     assert(!is_pim);
     DPRINTF(PIM, "inside processActivatePIMCPUEvent:: activating PIM CPU\n");
-    BaseCPU *pim_cpu=(BaseCPU*)SimObject::find(("system.pim_cpu"+std::to_string(pim_cpu_to_activate)).data());
+    BaseCPU *pim_cpu;
+    pim_cpu = (BaseCPU*)SimObject::find(("system.pim_cpu"+std::to_string(pim_cpu_to_activate)).data());
+    if (!pim_cpu) pim_cpu = (BaseCPU*)SimObject::find(("system.pim_cpu"));
     if(!pim_cpu) fatal("Found no PIM processors.");
     
     pim_cpu->host_id=this->_cpuId;

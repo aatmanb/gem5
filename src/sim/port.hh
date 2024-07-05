@@ -52,6 +52,9 @@
 
 #include "base/types.hh"
 
+#include "base/logging.hh"
+#include "debug/PIM.hh"
+
 namespace gem5
 {
 
@@ -136,6 +139,8 @@ class Port
     void
     takeOverFrom(Port *old)
     {
+        //DPRINTF(PIM, "taking over port, new: %p, old: %p\n", this, old);
+        std::cout << "taking over port, new: " << this << ", old: " << old << std::endl; 
         assert(old);
         assert(old->isConnected());
         assert(!isConnected());

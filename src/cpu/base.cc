@@ -609,7 +609,7 @@ BaseCPU::takeOverFrom(BaseCPU *oldCPU)
 {
     assert(threadContexts.size() == oldCPU->threadContexts.size());
     assert(_cpuId == oldCPU->cpuId());
-    assert(_switchedOut);
+    assert(_switchedOut || is_pim || oldCPU->is_pim);
     assert(oldCPU != this);
     _pid = oldCPU->getPid();
     _taskId = oldCPU->taskId();
@@ -655,17 +655,20 @@ BaseCPU::takeOverFrom(BaseCPU *oldCPU)
         CheckerCPU *old_checker = oldTC->getCheckerCpuPtr();
         CheckerCPU *new_checker = newTC->getCheckerCpuPtr();
         if (old_checker && new_checker) {
+            DPRINTF(PIM, "taking over checker CPU, new: %p, old: %p\n", new_checker, old_checker);
             new_checker->getMMUPtr()->takeOverFrom(old_checker->getMMUPtr());
         }
+        DPRINTF(PIM, "transferred thread: %d\n", i);
     }
+    DPRINTF(PIM, "transferred all threads\n");
 
+    if(!(oldCPU->is_pim||is_pim)){
     interrupts = oldCPU->interrupts;
     for (ThreadID tid = 0; tid < numThreads; tid++) {
         interrupts[tid]->setThreadContext(threadContexts[tid]);
     }
     oldCPU->interrupts.clear();
 
-    if (!is_pim) {
     // All CPUs have an instruction and a data port, and the new CPU's
     // ports are dangling while the old CPU has its ports connected
     // already. Unbind the old CPU and then bind the ports of the one

@@ -46,6 +46,8 @@
 #include "cpu/thread_context.hh"
 #include "sim/system.hh"
 
+#include "debug/PIM.hh"
+
 namespace gem5
 {
 
@@ -156,6 +158,7 @@ BaseMMU::MMUTranslationGen::translate(Range &range) const
 void
 BaseMMU::takeOverFrom(BaseMMU *old_mmu)
 {
+    DPRINTF(PIM, "taking over MMU, new: %p, old: %p\n", this, old_mmu);
     Port *old_itb_port = old_mmu->itb->getTableWalkerPort();
     Port *old_dtb_port = old_mmu->dtb->getTableWalkerPort();
     Port *new_itb_port = itb->getTableWalkerPort();

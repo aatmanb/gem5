@@ -266,6 +266,7 @@ takeOverFrom(ThreadContext &ntc, ThreadContext &otc)
         assert(ntc.getSystemPtr() == otc.getSystemPtr());
 
     otc.setStatus(ThreadContext::Halted);
+    DPRINTF(PIM, "outside threadContext::takeoverfrom\n");
 }
 
 } // namespace gem5

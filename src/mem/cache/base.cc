@@ -2757,7 +2757,7 @@ BaseCache::flush() {
         uint8_t *empty = new uint8_t[blkSize];
         pkt->dataDynamic(empty);
         pkt->setDataFromBlock(std::get<1>(blk)->data, blkSize);
-        memSidePort.sendFunctional(pkt)memSidePort.sendTimingReq(pkt);
+        memSidePort.sendFunctional(pkt); //memSidePort.sendTimingReq(pkt);
         delete pkt;
         //std::get<1>(blk)->status &= ~std::get<1>(blk)->BlkDirty;
         std::get<1>(blk)->clearCoherenceBits(CacheBlk::CoherenceBits::DirtyBit);

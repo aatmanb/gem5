@@ -693,7 +693,7 @@ class BaseCPU : public ClockedObject
         fatal("Base CPU cannot PIMProcess");
     }
 
-    virtual void HostProcess(ThreadContext *tc) {
+    virtual void HostProcess(ThreadContext *tc, int id) {
         fatal("Base CPU cannot execute HostProcess");
     }
 

@@ -69,6 +69,7 @@ void m5_work_end(uint64_t workid, uint64_t threadid);
 
 // @PIM
 void m5_pim_process(int id);
+void m5_host_process(int id);
 
 /*
  * Send a very generic poke to the workload so it can do something. It's up to

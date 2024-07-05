@@ -385,6 +385,7 @@ class TimingSimpleCPU : public BaseSimpleCPU
 
     // @PIM
     void PIMProcess(ThreadContext *tc, int id) override;
+    void HostProcess(ThreadContext *tc, int id) override;
 };
 
 } // namespace gem5

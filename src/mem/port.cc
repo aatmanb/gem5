@@ -192,6 +192,7 @@ RequestPort::addTrace(PacketPtr pkt) const
 {
     if (!gem5::debug::PortTrace || !pkt)
         return;
+    DPRINTF(PortTrace, "Adding trace in pkt: %s\n", pkt->print());
     auto ext = pkt->getExtension<TracingExtension>();
     if (!ext) {
         ext = std::make_shared<TracingExtension>();
@@ -205,6 +206,7 @@ RequestPort::removeTrace(PacketPtr pkt) const
 {
     if (!gem5::debug::PortTrace || !pkt)
         return;
+    DPRINTF(PortTrace, "Removing trace from pkt: %s\n", pkt->print());
     auto ext = pkt->getExtension<TracingExtension>();
     panic_if(!ext, "There is no TracingExtension in the packet.");
     ext->remove();

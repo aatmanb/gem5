@@ -73,7 +73,21 @@ SnoopFilter::lookupRequest(const Packet* cpkt, const ResponsePort&
     // check if the packet came from a cache
     bool allocate = !cpkt->req->isUncacheable() && cpu_side_port.isSnooping()
         && cpkt->fromCache();
+    DPRINTF(SnoopFilter, "%s: allocate: %d, cpkt->req->isUncacheable(): %d, cpu_side_port.isSnooping(): %d, cpkt->fromCache(): %d\n", __func__, allocate, cpkt->req->isUncacheable(), cpu_side_port.isSnooping(), cpkt->fromCache());
     Addr line_addr = cpkt->getBlockAddr(linesize);
+    auto it = fromCache.find(cpkt->getBlockAddr(linesize));
+    // In a multi-threaded program, mem requests to the same cache line might be issued by different threads. We need to keep a track of pending request before deleting the entry from fromCache map.
+    // This assumes that all the requests to the same cache line will have the same fromCache() value.
+    // Ideally, we would like coalescing the request which will happend I add the L2 cache.
+    if (it == fromCache.end()) {
+        fromCache.emplace(line_addr, std::tuple<bool,int>{cpkt->fromCache(),1});
+    }
+    else {
+        int pending_req = std::get<1>(it->second) + 1;
+        fromCache.erase(it);
+        fromCache.emplace(line_addr, std::tuple<bool,int>{cpkt->fromCache(), pending_req});
+    }
+        
     if (cpkt->isSecure()) {
         line_addr |= LineSecure;
     }
@@ -108,15 +122,17 @@ SnoopFilter::lookupRequest(const Packet* cpkt, const ResponsePort&
             stats.hitMultiRequests++;
     }
 
-    DPRINTF(SnoopFilter, "%s:   SF value %x.%x\n",
-            __func__, sf_item.requested, sf_item.holder);
+    DPRINTF(SnoopFilter, "%s:   SF value %x.%x, req: %x\n",
+            __func__, sf_item.requested, sf_item.holder, req_port);
 
     // If we are not allocating, we are done
-    if (!allocate)
+    if (!allocate) {
         return snoopSelected(maskToPortList(interested & ~req_port),
                              lookupLatency);
-
+    }
+    
     if (cpkt->needsResponse()) {
+        DPRINTF(SnoopFilter, "Packet needs response\n");
         if (!cpkt->cacheResponding()) {
             // Max one request per address per port
             panic_if((sf_item.requested & req_port).any(),
@@ -140,6 +156,7 @@ SnoopFilter::lookupRequest(const Packet* cpkt, const ResponsePort&
         }
     } else { // if (!cpkt->needsResponse())
         assert(cpkt->isEviction());
+        DPRINTF(SnoopFilter, "Packet doesn't need response\n");
         // make sure that the sender actually had the line
         panic_if((sf_item.holder & req_port).none(), "requestor %x is not a " \
                  "holder :( SF value %x.%x\n", req_port,
@@ -343,13 +360,24 @@ SnoopFilter::updateResponse(const Packet* cpkt, const ResponsePort&
 
     assert(cpkt->isResponse());
 
+    Addr line_addr = cpkt->getBlockAddr(linesize);
     // we only allocate if the packet actually came from a cache, but
     // start by checking if the port is snooping
-    if (cpkt->req->isUncacheable() || !cpu_side_port.isSnooping())
+    auto it = fromCache.find(line_addr);
+    assert(it != fromCache.end());
+    bool from_cache = std::get<0>(it->second);
+    int pending_req = std::get<1>(it->second) - 1;
+    fromCache.erase(it);
+    if (pending_req != 0) {
+        // Insert again if some requests are pending
+        fromCache.emplace(line_addr, std::tuple<bool,int>{from_cache, pending_req});
+    }
+    if (cpkt->req->isUncacheable() || !cpu_side_port.isSnooping() || !from_cache) {
+        DPRINTF(SnoopFilter, "%s: cpkt->req->isUncacheable(): %d, cpu_side_port.isSnooping(): %d, cpkt->fromCache(): %d, from_cache: %d. SnoopFilter entry not allocated for this packet.\n", __func__, cpkt->req->isUncacheable(), cpu_side_port.isSnooping(), cpkt->fromCache(), from_cache);
         return;
+    }
 
     // next check if we actually allocated an entry
-    Addr line_addr = cpkt->getBlockAddr(linesize);
     if (cpkt->isSecure()) {
         line_addr |= LineSecure;
     }
@@ -365,8 +393,8 @@ SnoopFilter::updateResponse(const Packet* cpkt, const ResponsePort&
 
     // Make sure we have seen the actual request, too
     panic_if((sf_item.requested & response_mask).none(),
-             "SF value %x.%x missing request bit\n",
-             sf_item.requested, sf_item.holder);
+             "SF value %x.%x missing request bit. response_mask: %x\n",
+             sf_item.requested, sf_item.holder, response_mask);
 
     sf_item.requested &= ~response_mask;
     // Update the residency of the cache line.
