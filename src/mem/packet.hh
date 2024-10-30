@@ -141,6 +141,7 @@ class MemCmd
         // Fake simulator-only commands
         PrintReq,       // Print state matching address
         FlushReq,      //request for a cache flush
+        FlushResp,
         InvalidateReq,   // request for address to be invalidated
         InvalidateResp,
         // hardware transactional memory
@@ -360,7 +361,10 @@ class Packet : public Printable, public Extensible<Packet>
 
         // Signal block present to squash prefetch and cache evict packets
         // through express snoop flag
-        BLOCK_CACHED          = 0x00010000
+        BLOCK_CACHED           = 0x00010000,
+
+        // @PIM
+        FROM_PIM               = 0x00020000
     };
 
     Flags flags;
@@ -622,7 +626,7 @@ class Packet : public Printable, public Extensible<Packet>
     bool isError() const             { return cmd.isError(); }
     bool isPrint() const             { return cmd.isPrint(); }
     bool isFlush() const             { return cmd.isFlush(); }
-
+    
     bool isWholeLineWrite(unsigned blk_size)
     {
         return (cmd == MemCmd::WriteReq || cmd == MemCmd::WriteLineReq) &&
@@ -759,7 +763,11 @@ class Packet : public Printable, public Extensible<Packet>
     void setBlockCached()          { flags.set(BLOCK_CACHED); }
     bool isBlockCached() const     { return flags.isSet(BLOCK_CACHED); }
     void clearBlockCached()        { flags.clear(BLOCK_CACHED); }
-
+    // @PIM
+    void setFromPIM()          { flags.set(FROM_PIM); }
+    bool isFromPIM() const     { return flags.isSet(FROM_PIM); }
+    void clearFromPIM()        { flags.clear(FROM_PIM); }
+    
     /**
      * QoS Value getter
      * Returns 0 if QoS value was never set (constructor default).
@@ -908,6 +916,9 @@ class Packet : public Printable, public Extensible<Packet>
             size = req->getSize();
             flags.set(VALID_SIZE);
         }
+        if (req->isFromPIM()) {
+            flags.set(FROM_PIM);
+        }
     }
 
     /**
@@ -932,6 +943,9 @@ class Packet : public Printable, public Extensible<Packet>
         }
         size = _blkSize;
         flags.set(VALID_SIZE);
+        if (req->isFromPIM()) {
+            flags.set(FROM_PIM);
+        }
     }
 
     /**

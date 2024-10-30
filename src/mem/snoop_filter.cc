@@ -357,6 +357,7 @@ SnoopFilter::updateResponse(const Packet* cpkt, const ResponsePort&
 {
     DPRINTF(SnoopFilter, "%s: src %s packet %s\n",
             __func__, cpu_side_port.name(), cpkt->print());
+    DPRINTF(PIM, "cpkt->isFromPIM: %d\n", cpkt->isFromPIM());
 
     assert(cpkt->isResponse());
 

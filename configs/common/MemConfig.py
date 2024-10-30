@@ -70,6 +70,9 @@ def create_mem_intf(intf, r, i, intlv_bits, intlv_size, xor_low_bit):
     # mapping and row-buffer size
     interface = intf()
 
+    print(interface.addr_mapping.value)
+    print(type(intf))
+
     # Only do this for DRAMs
     if issubclass(intf, m5.objects.DRAMInterface):
         # If the channel bits are appearing after the column
@@ -86,6 +89,9 @@ def create_mem_intf(intf, r, i, intlv_bits, intlv_size, xor_low_bit):
             )
 
             intlv_low_bit = int(math.log(rowbuffer_size, 2))
+        elif interface.addr_mapping.value == "RoRaChCoBaCo":
+            # TODO: This has to be a function of how we want to split the pages among banks
+            intlv_low_bit = 14
 
     # Also adjust interleaving bits for NVM attached as memory
     # Will have separate range defined with unique interleaving
@@ -101,6 +107,13 @@ def create_mem_intf(intf, r, i, intlv_bits, intlv_size, xor_low_bit):
             buffer_size = interface.per_bank_buffer_size.value
 
             intlv_low_bit = int(math.log(buffer_size, 2))
+
+    print(f"r.start: {r.start}")
+    print(f"r.size: {r.size}")
+    print(f"intlv_low_bit: {intlv_low_bit}")
+    print(f"intlv_bits: {intlv_bits}")
+    print(f"xor_high_bit: {xor_high_bit}")
+    print(f"i: {i}")
 
     # We got all we need to configure the appropriate address
     # range
@@ -148,6 +161,20 @@ def config_mem(options, system):
     opt_dram_powerdown = getattr(options, "enable_dram_powerdown", None)
     opt_mem_channels_intlv = getattr(options, "mem_channels_intlv", 128)
     opt_xor_low_bit = getattr(options, "xor_low_bit", 0)
+
+    print(f"opt_mem_type:{opt_mem_type}")
+    print(f"opt_nvm_type:{opt_nvm_type}")
+    print(f"opt_tlm_memory:{opt_tlm_memory}")
+    print(f"opt_external_memory_system:{opt_external_memory_system}")
+    print(f"opt_elastic_trace_en:{opt_elastic_trace_en}")
+    print(f"opt_mem_channels:{opt_mem_channels}")
+    print(f"opt_mem_ranks:{opt_mem_ranks}")
+    print(f"opt_nvm_ranks:{opt_nvm_ranks}")
+    print(f"opt_hybrid_channel:{opt_hybrid_channel}")
+    print(f"opt_dram_powerdown:{opt_dram_powerdown}")
+    print(f"opt_mem_channels_intlv:{opt_mem_channels_intlv}")
+    print(f"opt_xor_low_bit:{opt_xor_low_bit}")
+
 
     if opt_mem_type == "HMC_2500_1x32":
         HMChost = HMC.config_hmc_host_ctrl(options, system)

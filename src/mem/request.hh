@@ -339,6 +339,15 @@ class Request : public Extensible<Request>
 
     };
 
+    typedef uint64_t PIMFlagsType;
+    typedef gem5::Flags<PIMFlagsType> PIMFlags;
+    
+    enum : PIMFlagsType
+    {
+        FLUSH_ALL               = 0x00000001,
+        FROM_PIM                = 0x00000002
+    };
+
     using LocalAccessor =
         std::function<Cycles(ThreadContext *tc, Packet *pkt)>;
 
@@ -408,6 +417,8 @@ class Request : public Extensible<Request>
 
     /** Private flags for field validity checking. */
     PrivateFlags privateFlags;
+
+    PIMFlags _pimFlags;
 
     /**
      * The time this request was started. Used to calculate
@@ -622,7 +633,12 @@ class Request : public Extensible<Request>
             _byteEnable.begin() + req1->_size);
         req2->_byteEnable = std::vector<bool>(
             _byteEnable.begin() + req1->_size,
-            _byteEnable.end());
+           _byteEnable.end());
+
+        if (isFromPIM()) {
+            req1->setPIMFlags(Request::FROM_PIM);
+            req2->setPIMFlags(Request::FROM_PIM);
+        }
     }
 
     /**
@@ -828,6 +844,24 @@ class Request : public Extensible<Request>
         // TODO: do mem_sync_op requests have valid paddr/vaddr?
         assert(hasPaddr() || hasVaddr());
         _cacheCoherenceFlags.clear(extraFlags);
+    }
+
+    void
+    setPIMFlags(PIMFlags extraFlags)
+    {
+        _pimFlags.set(extraFlags);
+    }
+
+    void
+    clearPIMFlags(PIMFlags extraFlags)
+    {
+        _pimFlags.clear(extraFlags);
+    }
+    
+    bool
+    isFromPIM() const
+    {
+        return _pimFlags.isSet(FROM_PIM);
     }
 
     /** Accessor function for vaddr.*/

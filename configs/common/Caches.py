@@ -76,6 +76,7 @@ class L2Cache(Cache):
     mshrs = 20
     tgts_per_mshr = 12
     write_buffers = 8
+    is_llc = True
 
 
 class IOCache(Cache):

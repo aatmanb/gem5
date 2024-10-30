@@ -254,7 +254,7 @@ class BaseSetAssoc : public BaseTags
             if (blk.isSet(CacheBlk::CoherenceBits::DirtyBit)) {
                 address = regenerateBlkAddr(&blk);
                 dirty_blks.push_back(std::make_tuple(address, &blk));
-                DPRINTF(PIM, "found dirty blk at address: 0x%x, data: 0x%x\n", address, *(blk.data));
+                //DPRINTF(PIM, "found dirty blk at address: 0x%x, data: 0x%x\n", address, *(blk.data));
             }
         }
         return dirty_blks;
@@ -269,7 +269,7 @@ class BaseSetAssoc : public BaseTags
 
             if (blk_temp.isValid()) {
                 address = regenerateBlkAddr(&blk_temp);
-                DPRINTF(PIM, "found valid blk at address: 0x%x, data: 0x%x\n", address, *(blk_temp.data));
+                //DPRINTF(PIM, "found valid blk at address: 0x%x, data: 0x%x\n", address, *(blk_temp.data));
                 invalidate(&blk_temp);
                 blk_temp.invalidate();
             }

@@ -225,7 +225,9 @@ MemCmd::commandInfo[] =
     /* PrintReq */
     { {IsRequest, IsPrint}, InvalidCmd, "PrintReq" },
     /* Flush Request */
-    { {IsRequest, IsFlush, NeedsWritable}, InvalidCmd, "FlushReq" },
+    { {IsRequest, IsFlush, NeedsWritable, NeedsResponse}, FlushResp, "FlushReq" },
+    /* Flush Response */
+    { {IsResponse, IsFlush}, InvalidCmd, "FlushResp" },
     /* Invalidation Request */
     { {IsInvalidate, IsRequest, NeedsWritable, NeedsResponse, FromCache},
       InvalidateResp, "InvalidateReq" },

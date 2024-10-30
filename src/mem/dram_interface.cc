@@ -776,6 +776,8 @@ DRAMInterface::init()
             }
             // this is essentially the check above, so just to be sure
             assert(burstsPerStripe <= burstsPerRowBuffer);
+        } else if (addrMapping == enums::RoRaChCoBaCo) {
+            DPRINTF(PIM, "Intializing using RoRaChCoBaCo addr mapping\n");
         }
     }
 }
@@ -847,9 +849,24 @@ DRAMInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
     // Get packed address, starting at 0
     Addr addr = getCtrlAddr(pkt_addr);
 
+    DPRINTF(PIM, "devices_per_rank: %d\n", devicesPerRank); 
+    DPRINTF(PIM, "device_size: %d\n", deviceSize);
+    DPRINTF(PIM, "device_rowbuffer_size: %d\n", deviceRowBufferSize);
+    DPRINTF(PIM, "rowbuffer_size: %d\n", rowBufferSize);
+    DPRINTF(PIM, "burst_size: %d\n", burstSize);
+    DPRINTF(PIM, "bursts_per_rowbuffer: %d\n", burstsPerRowBuffer);
+    DPRINTF(PIM, "bursts_per_stripe: %d\n", burstsPerStripe);
+    DPRINTF(PIM, "ranks_per_channel: %d\n", ranksPerChannel);
+    DPRINTF(PIM, "banks_per_rank: %d\n", banksPerRank);
+    DPRINTF(PIM, "rows_per_bank: %d\n", rowsPerBank);
+
+    DPRINTF(PIM, "Address: %#x\n", addr);
+
     // truncate the address to a memory burst, which makes it unique to
     // a specific buffer, row, bank, rank and channel
     addr = addr / burstSize;
+
+    DPRINTF(PIM, "Address: %#x\n", addr);
 
     // we have removed the lowest order address bits that denote the
     // position within the column
@@ -858,15 +875,21 @@ DRAMInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
         // sequential cache lines occupy the same row
         addr = addr / burstsPerRowBuffer;
 
+        DPRINTF(PIM, "Address: %#x\n", addr);
+
         // after the channel bits, get the bank bits to interleave
         // over the banks
         bank = addr % banksPerRank;
         addr = addr / banksPerRank;
 
+        DPRINTF(PIM, "Address: %#x\n", addr);
+
         // after the bank, we get the rank bits which thus interleaves
         // over the ranks
         rank = addr % ranksPerChannel;
         addr = addr / ranksPerChannel;
+
+        DPRINTF(PIM, "Address: %#x\n", addr);
 
         // lastly, get the row bits, no need to remove them from addr
         row = addr % rowsPerBank;
@@ -881,22 +904,63 @@ DRAMInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
             addr = addr / burstsPerStripe;
         }
 
+        DPRINTF(PIM, "Address: %#x\n", addr);
+
         // start with the bank bits, as this provides the maximum
         // opportunity for parallelism between requests
         bank = addr % banksPerRank;
         addr = addr / banksPerRank;
 
+        DPRINTF(PIM, "Address: %#x\n", addr);
+
         // next get the rank bits
         rank = addr % ranksPerChannel;
         addr = addr / ranksPerChannel;
+
+        DPRINTF(PIM, "Address: %#x\n", addr);
 
         // next, the higher-order column bites
         if (burstsPerStripe < burstsPerRowBuffer) {
             addr = addr / (burstsPerRowBuffer / burstsPerStripe);
         }
 
+        DPRINTF(PIM, "Address: %#x\n", addr);
+
         // lastly, get the row bits, no need to remove them from addr
         row = addr % rowsPerBank;
+    } else if (addrMapping == enums::RoRaChCoBaCo) {
+        //TODO: Hardocded assumptions
+        // 1. device_row_buffer_size = 1KB (1024 columns)
+        // 2. num_channels = 2
+
+        // Lower 2 bits of the column
+        addr = addr/4;
+
+        DPRINTF(PIM, "Address: %#x\n", addr);
+
+        bank = addr % banksPerRank;
+        addr = addr / banksPerRank;
+
+        DPRINTF(PIM, "Address: %#x\n", addr);
+
+        // Upper 2 column bits
+        addr = addr/4;
+
+        DPRINTF(PIM, "Address: %#x\n", addr);
+
+        // Channel bits (assuming only 1 channel)
+        addr = addr/2;
+
+        DPRINTF(PIM, "Address: %#x\n", addr);
+
+        row = addr % rowsPerBank;
+        addr = addr / rowsPerBank;
+
+        DPRINTF(PIM, "Address: %#x\n", addr);
+
+        rank = addr % ranksPerChannel;
+        //addr = addr / ranksPerChannel;
+
     } else
         panic("Unknown address mapping policy chosen!");
 
@@ -905,8 +969,10 @@ DRAMInterface::decodePacket(const PacketPtr pkt, Addr pkt_addr,
     assert(row < rowsPerBank);
     assert(row < Bank::NO_ROW);
 
-    DPRINTF(DRAM, "Address: %#x Rank %d Bank %d Row %d\n",
+    DPRINTF(PIM, "Address: %#x Rank %d Bank %d Row %d\n",
             pkt_addr, rank, bank, row);
+   // DPRINTF(DRAM, "Address: %#x Rank %d Bank %d Row %d\n",
+   //         pkt_addr, rank, bank, row);
 
     // create the corresponding memory packet with the entry time and
     // ready time set to the current tick, the latter will be updated

@@ -303,11 +303,15 @@ void
 TimingSimpleCPU::sendData(const RequestPtr &req, uint8_t *data, uint64_t *res,
                           bool read)
 {
+    //DPRINTF(PIM, "sendData\n");
     SimpleExecContext &t_info = *threadInfo[curThread];
     SimpleThread* thread = t_info.thread;
 
     PacketPtr pkt = buildPacket(req, read);
     pkt->dataDynamic<uint8_t>(data);
+    //if (is_pim) {
+    //    pkt->setFromPIM();
+    //}
 
     // hardware transactional memory
     // If the core is in transactional mode or if the request is HtmCMD
@@ -352,6 +356,7 @@ void
 TimingSimpleCPU::sendSplitData(const RequestPtr &req1, const RequestPtr &req2,
                                const RequestPtr &req, uint8_t *data, bool read)
 {
+    //DPRINTF(PIM, "sendSplitData\n");
     SimpleExecContext &t_info = *threadInfo[curThread];
     PacketPtr pkt1, pkt2;
     buildSplitPacket(pkt1, pkt2, req1, req2, req, data, read);
@@ -438,6 +443,11 @@ TimingSimpleCPU::buildSplitPacket(PacketPtr &pkt1, PacketPtr &pkt2,
     pkt1 = buildPacket(req1, read);
     pkt2 = buildPacket(req2, read);
 
+    //if (is_pim) {
+    //    pkt1->setFromPIM();
+    //    pkt2->setFromPIM();
+    //}
+
     PacketPtr pkt = new Packet(req, pkt1->cmd.responseCommand());
 
     pkt->dataDynamic<uint8_t>(data);
@@ -458,6 +468,7 @@ TimingSimpleCPU::initiateMemRead(Addr addr, unsigned size,
                                  Request::Flags flags,
                                  const std::vector<bool>& byte_enable)
 {
+    DPRINTF(PIM, "%s\n", __func__);
     SimpleExecContext &t_info = *threadInfo[curThread];
     SimpleThread* thread = t_info.thread;
 
@@ -475,11 +486,19 @@ TimingSimpleCPU::initiateMemRead(Addr addr, unsigned size,
 
     req->taskId(taskId());
 
+    if (is_pim) {
+        DPRINTF(PIM, "PIM CPU sending memRead\n");
+        Request::PIMFlags pim_flags = Request::FROM_PIM; 
+        req->setPIMFlags(pim_flags);
+    }
+
+
     Addr split_addr = roundDown(addr + size - 1, block_size);
     assert(split_addr <= addr || split_addr - addr < block_size);
 
     _status = DTBWaitResponse;
     if (split_addr > addr) {
+        DPRINTF(PIM, "Splitting memRead req into two\n");
         RequestPtr req1, req2;
         assert(!req->isLLSC() && !req->isSwap());
         req->splitOnVaddr(split_addr, req1, req2);
@@ -557,6 +576,12 @@ TimingSimpleCPU::writeMem(uint8_t *data, unsigned size,
 
     req->taskId(taskId());
 
+    if (is_pim) {
+        DPRINTF(PIM, "PIM CPU sending memWrite\n");
+        Request::PIMFlags pim_flags = Request::FROM_PIM; 
+        req->setPIMFlags(pim_flags);
+    }
+
     Addr split_addr = roundDown(addr + size - 1, block_size);
     assert(split_addr <= addr || split_addr - addr < block_size);
 
@@ -566,6 +591,7 @@ TimingSimpleCPU::writeMem(uint8_t *data, unsigned size,
     // accesses yet
 
     if (split_addr > addr) {
+        DPRINTF(PIM, "Splitting memWrite req into two\n");
         RequestPtr req1, req2;
         assert(!req->isLLSC() && !req->isSwap());
         req->splitOnVaddr(split_addr, req1, req2);
@@ -614,6 +640,11 @@ TimingSimpleCPU::initiateMemAMO(Addr addr, unsigned size,
     assert(req->hasAtomicOpFunctor());
 
     req->taskId(taskId());
+
+    //if (is_pim) {
+    //    Request::PIMFlags pim_flags = Request::FROM_PIM; 
+    //    req->setPIMFlags(pim_flags);
+    //}
 
     Addr split_addr = roundDown(addr + size - 1, block_size);
 
@@ -707,6 +738,10 @@ TimingSimpleCPU::fetch()
         RequestPtr ifetch_req = std::make_shared<Request>();
         ifetch_req->taskId(taskId());
         ifetch_req->setContext(thread->contextId());
+        //if (is_pim) {
+        //    Request::PIMFlags pim_flags = Request::FROM_PIM; 
+        //    ifetch_req->setPIMFlags(pim_flags);
+        //}
         setupFetchRequest(ifetch_req);
         DPRINTF(SimpleCPU, "Translating address %#x\n", ifetch_req->getVaddr());
         thread->mmu->translateTiming(ifetch_req, thread->getTC(),
@@ -732,6 +767,9 @@ TimingSimpleCPU::sendFetch(const Fault &fault, const RequestPtr &req,
                 req->getVaddr(), req->getPaddr());
         ifetch_pkt = new Packet(req, MemCmd::ReadReq);
         ifetch_pkt->dataStatic(decoder->moreBytesPtr());
+        //if (is_pim) {
+        //    ifetch_pkt->setFromPIM();
+        //}
         DPRINTF(SimpleCPU, " -- pkt addr: %#x\n", ifetch_pkt->getAddr());
 
         if (!icachePort.sendTimingReq(ifetch_pkt)) {
@@ -950,6 +988,7 @@ TimingSimpleCPU::completeDataAccess(PacketPtr pkt)
 {
     // hardware transactional memory
 
+    //DPRINTF(PIM, "inside completeDataAccess\n");
     SimpleExecContext *t_info = threadInfo[curThread];
     [[maybe_unused]] const bool is_htm_speculative =
         t_info->inHtmTransactionalState();
@@ -1143,28 +1182,45 @@ TimingSimpleCPU::DcachePort::recvFunctionalSnoop(PacketPtr pkt)
 bool
 TimingSimpleCPU::DcachePort::recvTimingResp(PacketPtr pkt)
 {
-    DPRINTF(SimpleCPU, "Received load/store response %#x\n", pkt->getAddr());
 
-    // The timing CPU is not really ticked, instead it relies on the
-    // memory system (fetch and load/store) to set the pace.
-    if (!tickEvent.scheduled()) {
-        // Delay processing of returned data until next CPU clock edge
+    if (!pkt->isFlush()) { 
+        DPRINTF(SimpleCPU, "Received load/store response %#x\n", pkt->getAddr());
+
+        // The timing CPU is not really ticked, instead it relies on the
+        // memory system (fetch and load/store) to set the pace.
+        if (!tickEvent.scheduled()) {
+            // Delay processing of returned data until next CPU clock edge
+            tickEvent.schedule(pkt, cpu->clockEdge());
+            return true;
+        } else {
+            // In the case of a split transaction and a cache that is
+            // faster than a CPU we could get two responses in the
+            // same tick, delay the second one
+            if (!retryRespEvent.scheduled())
+                cpu->schedule(retryRespEvent, cpu->clockEdge(Cycles(1)));
+            return false;
+        }
+    }
+    else {
+        // Flush response received. This means the entire cache hierarchy is flushed.
+        // Activate PIM CPU on next clock edge
+        DPRINTF(PIM, "Received pkt: %s \n", pkt->print());
         tickEvent.schedule(pkt, cpu->clockEdge());
         return true;
-    } else {
-        // In the case of a split transaction and a cache that is
-        // faster than a CPU we could get two responses in the
-        // same tick, delay the second one
-        if (!retryRespEvent.scheduled())
-            cpu->schedule(retryRespEvent, cpu->clockEdge(Cycles(1)));
-        return false;
     }
 }
 
 void
 TimingSimpleCPU::DcachePort::DTickEvent::process()
 {
-    cpu->completeDataAccess(pkt);
+    //DPRINTF(PIM, "DTickEvent::process()\n");
+    if (!pkt->isFlush()) {
+        cpu->completeDataAccess(pkt);
+    }
+    else {
+        DPRINTF(PIM, "Processing pkt: %s \n", pkt->print());
+        cpu->activatePIM();
+    }
 }
 
 void
@@ -1221,6 +1277,7 @@ TimingSimpleCPU::IprEvent::IprEvent(Packet *_pkt, TimingSimpleCPU *_cpu,
 void
 TimingSimpleCPU::IprEvent::process()
 {
+    //DPRINTF(PIM, "IprEvent::process()\n");
     cpu->completeDataAccess(pkt);
 }
 
@@ -1257,7 +1314,10 @@ TimingSimpleCPU::initiateMemMgmtCmd(Request::Flags flags)
     req->setContext(thread->contextId());
     req->taskId(taskId());
     req->setInstCount(t_info.numInst);
-
+    //if (is_pim) {
+    //    req->setPIMFlags(Request::FROM_PIM);
+    //}
+    
     assert(req->isHTMCmd() || req->isTlbiCmd());
 
     // Use the payload as a sanity check,
@@ -1313,6 +1373,9 @@ TimingSimpleCPU::htmSendAbortSignal(ThreadID tid, uint64_t htm_uid,
     req->taskId(taskId());
     req->setInstCount(t_info.numInst);
     req->setHtmAbortCause(cause);
+    //if (is_pim) {
+    //    req->setPIMFlags(Request::FROM_PIM);
+    //}
 
     assert(req->isHTMAbort());
 
@@ -1334,9 +1397,13 @@ void TimingSimpleCPU::PIMProcess(ThreadContext *tc, int id) {
 
     
     BaseCPU *pim_cpu;
-    pim_cpu = (BaseCPU*)SimObject::find(("system.pim_cpu"+std::to_string(id)).data());
+    std::string prefix = "system.pim_cpu";
+    //if (id < 10){
+    //    prefix += "0";
+    //}
+    pim_cpu = (BaseCPU*)SimObject::find((prefix+std::to_string(id)).data());
     // If there is only 1 CPU, gem5 doesn't use the id
-    if (!pim_cpu) pim_cpu = (BaseCPU*)SimObject::find(("system.pim_cpu"));
+    if (!pim_cpu) pim_cpu = (BaseCPU*)SimObject::find(prefix.data());
     if (!pim_cpu) fatal("No PIM CPUs found");
 
     pim_cpu->takeOverFrom(this);
@@ -1349,16 +1416,19 @@ void TimingSimpleCPU::PIMProcess(ThreadContext *tc, int id) {
 
 void TimingSimpleCPU::HostProcess(ThreadContext *tc, int id) {
     DPRINTF(PIM, "Activate Host CPU id: %d\n", id);
-
     if (!is_pim) {
         warn("Host CPU id %d trying to activate Host CPU id %d. Only PIM CPU can activate Host CPU\n", _cpuId, id);
         return;
     }
 
     BaseCPU *host_cpu;
-    host_cpu = (BaseCPU*)SimObject::find(("system.cpu"+std::to_string(id)).data());
+    std::string prefix = "system.cpu";
+    //if (id < 10){
+    //    prefix += "0"; 
+    //}
+    host_cpu = (BaseCPU*)SimObject::find((prefix+std::to_string(id)).data());
     // If there is only 1 CPU, gem5 doesn't use the id
-    if (!host_cpu) host_cpu = (BaseCPU*)SimObject::find(("system.cpu"));
+    if (!host_cpu) host_cpu = (BaseCPU*)SimObject::find(prefix.data());
     if (!host_cpu) fatal("Host CPU %d not found", id);
 
     host_cpu->takeOverFrom(this);
@@ -1374,6 +1444,10 @@ void
 TimingSimpleCPU::processCacheFlushEvent() {
     DPRINTF(PIM, "inside processCacheFlushEvent:: flushing host CPU caches before activating PIM CPU %d\n", pim_cpu_to_activate);
     assert(!is_pim);
+    
+    SimpleExecContext &t_info = *threadInfo[curThread];
+    SimpleThread* thread = t_info.thread;
+
     //for(int i=0; i<pCaches.size(); i++) {
     //    if (!pCaches[i]->flushAll()) {
     //        DPRINTF(PIM, "Error while flushing cache %d\n", i);
@@ -1384,16 +1458,41 @@ TimingSimpleCPU::processCacheFlushEvent() {
     //}
    
     // Flush private L1 data cache. No need to flush Icache because it is read-only
-    // TODO: How to flush common L2 cache when the system has one 
-    Cache* cache = (Cache*)SimObject::find("system.cpu.dcache");
-    if(!cache) {
-        cache = (Cache*)SimObject::find(("system.cpu"+std::to_string(_cpuId)+".dcache").data());
-        if (!cache) fatal("No L1 cache in CPU %d\n", _cpuId);
+    // TODO: How to flush common L2 cache when the system has one
+
+    Addr addr = 0; // not used
+    unsigned size = 0; // not used
+    Request::Flags flags = 0; // not used
+    Request::PIMFlags pim_flags = Request::FLUSH_ALL;
+    //if (is_pim) {
+    //    pim_flags = pim_flags | Request::FROM_PIM;
+    //} 
+    RequestPtr req = std::make_shared<Request>(addr, size, flags, thread->contextId());
+    req->setPIMFlags(pim_flags);
+    
+    PacketPtr pkt = new Packet(req, MemCmd::FlushReq);
+    //if (is_pim) {
+    //    pkt->setFromPIM();
+    //}
+    if (!dcachePort.sendTimingReq(pkt)) {
+        DPRINTF(PIM, "failed to send flush packet. Will try again\n");
+        _status = DcacheRetry;
+        dcache_pkt = pkt;
+    } else {
+        DPRINTF(PIM, "flush packet sent. Waiting for response\n");
+        _status = DcacheWaitResponse;
+        dcache_pkt = NULL;
     }
 
-    cache->flush();
+    //Cache* cache = (Cache*)SimObject::find("system.cpu.dcache");
+    //if(!cache) {
+    //    cache = (Cache*)SimObject::find(("system.cpu"+std::to_string(_cpuId)+".dcache").data());
+    //    if (!cache) fatal("No L1 cache in CPU %d\n", _cpuId);
+    //}
+
+    //cache->flush();
     
-    schedule(activatePIMCPUEvent, curTick());
+    //schedule(activatePIMCPUEvent, curTick());
 }
 
 void
@@ -1401,13 +1500,22 @@ TimingSimpleCPU::processActivatePIMCPUEvent() {
     assert(!is_pim);
     DPRINTF(PIM, "inside processActivatePIMCPUEvent:: activating PIM CPU\n");
     BaseCPU *pim_cpu;
-    pim_cpu = (BaseCPU*)SimObject::find(("system.pim_cpu"+std::to_string(pim_cpu_to_activate)).data());
-    if (!pim_cpu) pim_cpu = (BaseCPU*)SimObject::find(("system.pim_cpu"));
+    std::string prefix = "system.pim_cpu";
+    //if (pim_cpu_to_activate < 10){
+    //    prefix += "0";
+    //}
+    pim_cpu = (BaseCPU*)SimObject::find((prefix+std::to_string(pim_cpu_to_activate)).data());
+    if (!pim_cpu) pim_cpu = (BaseCPU*)SimObject::find(prefix.data());
     if(!pim_cpu) fatal("Found no PIM processors.");
     
     pim_cpu->host_id=this->_cpuId;
     pim_cpu->activateContext(0);
     DPRINTF(PIM, "PIM CPU activated context\n");
+}
+
+void
+TimingSimpleCPU::activatePIM() {
+    schedule(activatePIMCPUEvent, curTick());
 }
 
 } // namespace gem5

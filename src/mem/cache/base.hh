@@ -980,6 +980,9 @@ class BaseCache : public ClockedObject
      * Normally this is all possible memory addresses. */
     const AddrRangeList addrRanges;
 
+    // @PIM
+    bool isLLC;
+
   public:
     /** System we are currently operating in. */
     System *system;
@@ -1363,6 +1366,9 @@ class BaseCache : public ClockedObject
     
     // @PIM
     bool flush(); // flush all dirty data and invalidate entire cache
+    bool flushDownstream();
+    bool completeDownstreamFlush(PacketPtr pkt, Tick delay);    
+
 };
 
 /**

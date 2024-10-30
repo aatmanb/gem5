@@ -476,6 +476,7 @@ AbstractMemory::access(PacketPtr pkt)
     if (pkt->needsResponse()) {
         pkt->makeResponse();
     }
+    DPRINTF(PIM, "pkt->isFromPIM: %d\n", pkt->isFromPIM());
 }
 
 void

@@ -115,7 +115,9 @@ BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
       missCount(p.max_miss_count),
       addrRanges(p.addr_ranges.begin(), p.addr_ranges.end()),
       system(p.system),
-      stats(*this)
+      stats(*this),
+      // @PIM
+      isLLC(p.is_llc)
 {
     // the MSHR queue has no reserve entries as we check the MSHR
     // queue on every single allocation, whereas the write queue has
@@ -407,72 +409,98 @@ BaseCache::handleTimingReqMiss(PacketPtr pkt, MSHR *mshr, CacheBlk *blk,
 void
 BaseCache::recvTimingReq(PacketPtr pkt)
 {
-    // anything that is merely forwarded pays for the forward latency and
-    // the delay provided by the crossbar
-    Tick forward_time = clockEdge(forwardLatency) + pkt->headerDelay;
 
-    if (pkt->cmd == MemCmd::LockedRMWWriteReq) {
-        // For LockedRMW accesses, we mark the block inaccessible after the
-        // read (see below), to make sure no one gets in before the write.
-        // Now that the write is here, mark it accessible again, so the
-        // write will succeed.  LockedRMWReadReq brings the block in in
-        // exclusive mode, so we know it was previously writable.
-        CacheBlk *blk = tags->findBlock(pkt->getAddr(), pkt->isSecure());
-        assert(blk && blk->isValid());
-        assert(!blk->isSet(CacheBlk::WritableBit) &&
-               !blk->isSet(CacheBlk::ReadableBit));
-        blk->setCoherenceBits(CacheBlk::ReadableBit);
-        blk->setCoherenceBits(CacheBlk::WritableBit);
-    }
+    if (!pkt->isFlush()) {
+        // anything that is merely forwarded pays for the forward latency and
+        // the delay provided by the crossbar
+        Tick forward_time = clockEdge(forwardLatency) + pkt->headerDelay;
 
-    Cycles lat;
-    CacheBlk *blk = nullptr;
-    bool satisfied = false;
-    {
-        PacketList writebacks;
-        // Note that lat is passed by reference here. The function
-        // access() will set the lat value.
-        satisfied = access(pkt, blk, lat, writebacks);
-
-        // After the evicted blocks are selected, they must be forwarded
-        // to the write buffer to ensure they logically precede anything
-        // happening below
-        doWritebacks(writebacks, clockEdge(lat + forwardLatency));
-    }
-
-    // Here we charge the headerDelay that takes into account the latencies
-    // of the bus, if the packet comes from it.
-    // The latency charged is just the value set by the access() function.
-    // In case of a hit we are neglecting response latency.
-    // In case of a miss we are neglecting forward latency.
-    Tick request_time = clockEdge(lat);
-    // Here we reset the timing of the packet.
-    pkt->headerDelay = pkt->payloadDelay = 0;
-
-    if (satisfied) {
-        // notify before anything else as later handleTimingReqHit might turn
-        // the packet in a response
-        ppHit->notify(CacheAccessProbeArg(pkt,accessor));
-
-        if (prefetcher && blk && blk->wasPrefetched()) {
-            DPRINTF(Cache, "Hit on prefetch for addr %#x (%s)\n",
-                    pkt->getAddr(), pkt->isSecure() ? "s" : "ns");
-            blk->clearPrefetched();
+        if (pkt->cmd == MemCmd::LockedRMWWriteReq) {
+            // For LockedRMW accesses, we mark the block inaccessible after the
+            // read (see below), to make sure no one gets in before the write.
+            // Now that the write is here, mark it accessible again, so the
+            // write will succeed.  LockedRMWReadReq brings the block in in
+            // exclusive mode, so we know it was previously writable.
+            CacheBlk *blk = tags->findBlock(pkt->getAddr(), pkt->isSecure());
+            assert(blk && blk->isValid());
+            assert(!blk->isSet(CacheBlk::WritableBit) &&
+                   !blk->isSet(CacheBlk::ReadableBit));
+            blk->setCoherenceBits(CacheBlk::ReadableBit);
+            blk->setCoherenceBits(CacheBlk::WritableBit);
         }
 
-        handleTimingReqHit(pkt, blk, request_time);
-    } else {
-        handleTimingReqMiss(pkt, blk, forward_time, request_time);
+        Cycles lat;
+        CacheBlk *blk = nullptr;
+        bool satisfied = false;
+        {
+            PacketList writebacks;
+            // Note that lat is passed by reference here. The function
+            // access() will set the lat value.
+            satisfied = access(pkt, blk, lat, writebacks);
 
-        ppMiss->notify(CacheAccessProbeArg(pkt,accessor));
+            // After the evicted blocks are selected, they must be forwarded
+            // to the write buffer to ensure they logically precede anything
+            // happening below
+            doWritebacks(writebacks, clockEdge(lat + forwardLatency));
+        }
+
+        // Here we charge the headerDelay that takes into account the latencies
+        // of the bus, if the packet comes from it.
+        // The latency charged is just the value set by the access() function.
+        // In case of a hit we are neglecting response latency.
+        // In case of a miss we are neglecting forward latency.
+        Tick request_time = clockEdge(lat);
+        // Here we reset the timing of the packet.
+        pkt->headerDelay = pkt->payloadDelay = 0;
+
+        if (satisfied) {
+            // notify before anything else as later handleTimingReqHit might turn
+            // the packet in a response
+            ppHit->notify(CacheAccessProbeArg(pkt,accessor));
+
+            if (prefetcher && blk && blk->wasPrefetched()) {
+                DPRINTF(Cache, "Hit on prefetch for addr %#x (%s)\n",
+                        pkt->getAddr(), pkt->isSecure() ? "s" : "ns");
+                blk->clearPrefetched();
+            }
+
+            handleTimingReqHit(pkt, blk, request_time);
+        } else {
+            handleTimingReqMiss(pkt, blk, forward_time, request_time);
+
+            ppMiss->notify(CacheAccessProbeArg(pkt,accessor));
+        }
+
+        if (prefetcher) {
+            // track time of availability of next prefetch, if any
+            Tick next_pf_time = std::max(
+                                prefetcher->nextPrefetchReadyTime(), clockEdge());
+            if (next_pf_time != MaxTick) {
+                schedMemSideSendEvent(next_pf_time);
+            }
+        }
     }
-
-    if (prefetcher) {
-        // track time of availability of next prefetch, if any
-        Tick next_pf_time = std::max(
-                            prefetcher->nextPrefetchReadyTime(), clockEdge());
-        if (next_pf_time != MaxTick) {
-            schedMemSideSendEvent(next_pf_time);
+    else {
+        DPRINTF(PIM, "received flush request from upstream\n");
+        fflush(stdout);
+        // TODO: this is flush latency. It will depend on the number of blocks to be flushed. 
+        // We should assume worst case i.e. each block has to be flushed
+        Cycles lat(50);
+        Tick request_time = clockEdge(lat);
+        // Flush this cache
+        if (!flush()) {
+            fatal("Flush unsuccessful!!\n");
+        }
+        if (!isLLC) {
+            // Send memcmd to flush the downstream cache
+            if (!flushDownstream()) {
+                fatal("Downstream cache flush unsuccessfull!!\n");
+            }
+        }
+        else {
+            // LLC doesn't need to send flush req downstream. So, it just indicates that it
+            // has flushed itself to the upstream component.
+            completeDownstreamFlush(pkt, request_time);
         }
     }
 }
@@ -494,144 +522,155 @@ BaseCache::recvTimingResp(PacketPtr pkt)
 {
     assert(pkt->isResponse());
 
-    // all header delay should be paid for by the crossbar, unless
-    // this is a prefetch response from above
-    panic_if(pkt->headerDelay != 0 && pkt->cmd != MemCmd::HardPFResp,
-             "%s saw a non-zero packet delay\n", name());
+    if (!pkt->isFlush()) {
+        // all header delay should be paid for by the crossbar, unless
+        // this is a prefetch response from above
+        panic_if(pkt->headerDelay != 0 && pkt->cmd != MemCmd::HardPFResp,
+                 "%s saw a non-zero packet delay\n", name());
 
-    const bool is_error = pkt->isError();
+        const bool is_error = pkt->isError();
 
-    if (is_error) {
-        DPRINTF(Cache, "%s: Cache received %s with error\n", __func__,
+        if (is_error) {
+            DPRINTF(Cache, "%s: Cache received %s with error\n", __func__,
+                    pkt->print());
+        }
+
+        DPRINTF(Cache, "%s: Handling response %s\n", __func__,
                 pkt->print());
-    }
 
-    DPRINTF(Cache, "%s: Handling response %s\n", __func__,
-            pkt->print());
-
-    // if this is a write, we should be looking at an uncacheable
-    // write
-    if (pkt->isWrite() && pkt->cmd != MemCmd::LockedRMWWriteResp) {
-        assert(pkt->req->isUncacheable());
-        handleUncacheableWriteResp(pkt);
-        return;
-    }
-
-    // we have dealt with any (uncacheable) writes above, from here on
-    // we know we are dealing with an MSHR due to a miss or a prefetch
-    MSHR *mshr = dynamic_cast<MSHR*>(pkt->popSenderState());
-    assert(mshr);
-
-    if (mshr == noTargetMSHR) {
-        // we always clear at least one target
-        clearBlocked(Blocked_NoTargets);
-        noTargetMSHR = nullptr;
-    }
-
-    // Initial target is used just for stats
-    const QueueEntry::Target *initial_tgt = mshr->getTarget();
-    const Tick miss_latency = curTick() - initial_tgt->recvTime;
-    if (pkt->req->isUncacheable()) {
-        assert(pkt->req->requestorId() < system->maxRequestors());
-        stats.cmdStats(initial_tgt->pkt)
-            .mshrUncacheableLatency[pkt->req->requestorId()] += miss_latency;
-    } else {
-        assert(pkt->req->requestorId() < system->maxRequestors());
-        stats.cmdStats(initial_tgt->pkt)
-            .mshrMissLatency[pkt->req->requestorId()] += miss_latency;
-    }
-
-    PacketList writebacks;
-
-    bool is_fill = !mshr->isForward &&
-        (pkt->isRead() || pkt->cmd == MemCmd::UpgradeResp ||
-         mshr->wasWholeLineWrite);
-
-    // make sure that if the mshr was due to a whole line write then
-    // the response is an invalidation
-    assert(!mshr->wasWholeLineWrite || pkt->isInvalidate());
-
-    CacheBlk *blk = tags->findBlock(pkt->getAddr(), pkt->isSecure());
-
-    if (is_fill && !is_error) {
-        DPRINTF(Cache, "Block for addr %#llx being updated in Cache\n",
-                pkt->getAddr());
-
-        const bool allocate = (writeAllocator && mshr->wasWholeLineWrite) ?
-            writeAllocator->allocate() : mshr->allocOnFill();
-        blk = handleFill(pkt, blk, writebacks, allocate);
-        assert(blk != nullptr);
-        ppFill->notify(CacheAccessProbeArg(pkt, accessor));
-    }
-
-    // Don't want to promote the Locked RMW Read until
-    // the locked write comes in
-    if (!mshr->hasLockedRMWReadTarget()) {
-        if (blk && blk->isValid() && pkt->isClean() && !pkt->isInvalidate()) {
-            // The block was marked not readable while there was a pending
-            // cache maintenance operation, restore its flag.
-            blk->setCoherenceBits(CacheBlk::ReadableBit);
-
-            // This was a cache clean operation (without invalidate)
-            // and we have a copy of the block already. Since there
-            // is no invalidation, we can promote targets that don't
-            // require a writable copy
-            mshr->promoteReadable();
+        // if this is a write, we should be looking at an uncacheable
+        // write
+        if (pkt->isWrite() && pkt->cmd != MemCmd::LockedRMWWriteResp) {
+            assert(pkt->req->isUncacheable());
+            handleUncacheableWriteResp(pkt);
+            return;
         }
 
-        if (blk && blk->isSet(CacheBlk::WritableBit) &&
-            !pkt->req->isCacheInvalidate()) {
-            // If at this point the referenced block is writable and the
-            // response is not a cache invalidate, we promote targets that
-            // were deferred as we couldn't guarrantee a writable copy
-            mshr->promoteWritable();
-        }
-    }
+        // we have dealt with any (uncacheable) writes above, from here on
+        // we know we are dealing with an MSHR due to a miss or a prefetch
+        MSHR *mshr = dynamic_cast<MSHR*>(pkt->popSenderState());
+        assert(mshr);
 
-    serviceMSHRTargets(mshr, pkt, blk);
-    // We are stopping servicing targets early for the Locked RMW Read until
-    // the write comes.
-    if (!mshr->hasLockedRMWReadTarget()) {
-        if (mshr->promoteDeferredTargets()) {
-            // avoid later read getting stale data while write miss is
-            // outstanding.. see comment in timingAccess()
-            if (blk) {
-                blk->clearCoherenceBits(CacheBlk::ReadableBit);
-            }
-            mshrQueue.markPending(mshr);
-            schedMemSideSendEvent(clockEdge() + pkt->payloadDelay);
+        if (mshr == noTargetMSHR) {
+            // we always clear at least one target
+            clearBlocked(Blocked_NoTargets);
+            noTargetMSHR = nullptr;
+        }
+
+        // Initial target is used just for stats
+        const QueueEntry::Target *initial_tgt = mshr->getTarget();
+        const Tick miss_latency = curTick() - initial_tgt->recvTime;
+        if (pkt->req->isUncacheable()) {
+            assert(pkt->req->requestorId() < system->maxRequestors());
+            stats.cmdStats(initial_tgt->pkt)
+                .mshrUncacheableLatency[pkt->req->requestorId()] += miss_latency;
         } else {
-            // while we deallocate an mshr from the queue we still have to
-            // check the isFull condition before and after as we might
-            // have been using the reserved entries already
-            const bool was_full = mshrQueue.isFull();
-            mshrQueue.deallocate(mshr);
-            if (was_full && !mshrQueue.isFull()) {
-                clearBlocked(Blocked_NoMSHRs);
+            assert(pkt->req->requestorId() < system->maxRequestors());
+            stats.cmdStats(initial_tgt->pkt)
+                .mshrMissLatency[pkt->req->requestorId()] += miss_latency;
+        }
+
+        PacketList writebacks;
+
+        bool is_fill = !mshr->isForward &&
+            (pkt->isRead() || pkt->cmd == MemCmd::UpgradeResp ||
+             mshr->wasWholeLineWrite);
+
+        // make sure that if the mshr was due to a whole line write then
+        // the response is an invalidation
+        assert(!mshr->wasWholeLineWrite || pkt->isInvalidate());
+
+        CacheBlk *blk = tags->findBlock(pkt->getAddr(), pkt->isSecure());
+
+        if (is_fill && !is_error) {
+            DPRINTF(Cache, "Block for addr %#llx being updated in Cache\n",
+                    pkt->getAddr());
+
+            const bool allocate = (writeAllocator && mshr->wasWholeLineWrite) ?
+                writeAllocator->allocate() : mshr->allocOnFill();
+            blk = handleFill(pkt, blk, writebacks, allocate);
+            assert(blk != nullptr);
+            ppFill->notify(CacheAccessProbeArg(pkt, accessor));
+        }
+
+        // Don't want to promote the Locked RMW Read until
+        // the locked write comes in
+        if (!mshr->hasLockedRMWReadTarget()) {
+            if (blk && blk->isValid() && pkt->isClean() && !pkt->isInvalidate()) {
+                // The block was marked not readable while there was a pending
+                // cache maintenance operation, restore its flag.
+                blk->setCoherenceBits(CacheBlk::ReadableBit);
+
+                // This was a cache clean operation (without invalidate)
+                // and we have a copy of the block already. Since there
+                // is no invalidation, we can promote targets that don't
+                // require a writable copy
+                mshr->promoteReadable();
             }
 
-            // Request the bus for a prefetch if this deallocation freed enough
-            // MSHRs for a prefetch to take place
-            if (prefetcher && mshrQueue.canPrefetch() && !isBlocked()) {
-                Tick next_pf_time = std::max(
-                    prefetcher->nextPrefetchReadyTime(), clockEdge());
-                if (next_pf_time != MaxTick)
-                    schedMemSideSendEvent(next_pf_time);
+            if (blk && blk->isSet(CacheBlk::WritableBit) &&
+                !pkt->req->isCacheInvalidate()) {
+                // If at this point the referenced block is writable and the
+                // response is not a cache invalidate, we promote targets that
+                // were deferred as we couldn't guarrantee a writable copy
+                mshr->promoteWritable();
             }
         }
 
-        // if we used temp block, check to see if its valid and then clear it
-        if (blk == tempBlock && tempBlock->isValid()) {
-            evictBlock(blk, writebacks);
+        serviceMSHRTargets(mshr, pkt, blk);
+        // We are stopping servicing targets early for the Locked RMW Read until
+        // the write comes.
+        if (!mshr->hasLockedRMWReadTarget()) {
+            if (mshr->promoteDeferredTargets()) {
+                // avoid later read getting stale data while write miss is
+                // outstanding.. see comment in timingAccess()
+                if (blk) {
+                    blk->clearCoherenceBits(CacheBlk::ReadableBit);
+                }
+                mshrQueue.markPending(mshr);
+                schedMemSideSendEvent(clockEdge() + pkt->payloadDelay);
+            } else {
+                // while we deallocate an mshr from the queue we still have to
+                // check the isFull condition before and after as we might
+                // have been using the reserved entries already
+                const bool was_full = mshrQueue.isFull();
+                mshrQueue.deallocate(mshr);
+                if (was_full && !mshrQueue.isFull()) {
+                    clearBlocked(Blocked_NoMSHRs);
+                }
+
+                // Request the bus for a prefetch if this deallocation freed enough
+                // MSHRs for a prefetch to take place
+                if (prefetcher && mshrQueue.canPrefetch() && !isBlocked()) {
+                    Tick next_pf_time = std::max(
+                        prefetcher->nextPrefetchReadyTime(), clockEdge());
+                    if (next_pf_time != MaxTick)
+                        schedMemSideSendEvent(next_pf_time);
+                }
+            }
+
+            // if we used temp block, check to see if its valid and then clear it
+            if (blk == tempBlock && tempBlock->isValid()) {
+                evictBlock(blk, writebacks);
+            }
         }
+
+        const Tick forward_time = clockEdge(forwardLatency) + pkt->headerDelay;
+        // copy writebacks to write buffer
+        doWritebacks(writebacks, forward_time);
+
+        DPRINTF(CacheVerbose, "%s: Leaving with %s\n", __func__, pkt->print());
+        delete pkt;
     }
-
-    const Tick forward_time = clockEdge(forwardLatency) + pkt->headerDelay;
-    // copy writebacks to write buffer
-    doWritebacks(writebacks, forward_time);
-
-    DPRINTF(CacheVerbose, "%s: Leaving with %s\n", __func__, pkt->print());
-    delete pkt;
+    else {
+        // Create a request packet so that completeDownstreamFlush can create a response and send it upstream
+        DPRINTF(PIM, "Received flush response from downstream. pkt: %s\n", pkt->print());
+        RequestPtr req = pkt->req;
+        PacketPtr req_pkt = new Packet(req, MemCmd::FlushReq);
+        Cycles lat(50);
+        Tick request_time = clockEdge(lat);
+        completeDownstreamFlush(req_pkt, request_time);
+    }
 }
 
 
@@ -2576,6 +2615,7 @@ BaseCache::CpuSidePort::recvTimingReq(PacketPtr pkt)
         assert(success);
         return true;
     } else if (tryTiming(pkt)) {
+        DPRINTF(PIM, "recvTimingReq pkt: %s\n", pkt->print());
         cache.recvTimingReq(pkt);
         return true;
     }
@@ -2757,7 +2797,7 @@ BaseCache::flush() {
         uint8_t *empty = new uint8_t[blkSize];
         pkt->dataDynamic(empty);
         pkt->setDataFromBlock(std::get<1>(blk)->data, blkSize);
-        memSidePort.sendFunctional(pkt); //memSidePort.sendTimingReq(pkt);
+        memSidePort.sendFunctional(pkt); //TODO: memSidePort.sendTimingReq(pkt);
         delete pkt;
         //std::get<1>(blk)->status &= ~std::get<1>(blk)->BlkDirty;
         std::get<1>(blk)->clearCoherenceBits(CacheBlk::CoherenceBits::DirtyBit);
@@ -2766,7 +2806,37 @@ BaseCache::flush() {
     DPRINTF(PIM, "done flushing entire cache\n");
     tags->invalidateAll();
     DPRINTF(PIM, "done invalidating entire cache\n");
+    
+    return true;
+}
 
+bool BaseCache::flushDownstream() {
+    // LLC cache cannot send flush to any downstream cache because there is no downstream cache
+    assert(!isLLC);
+    DPRINTF(PIM, "send flush request to downstream cache\n");
+
+    Addr addr = 0; // not used
+    unsigned size = 0; // not used
+    Request::Flags flags = 0; // not used
+    Request::PIMFlags pim_flags = Request::FLUSH_ALL;  
+    RequestPtr req = std::make_shared<Request>(addr, size, flags, 0);
+    req->setPIMFlags(pim_flags);
+    
+    PacketPtr pkt = new Packet(req, MemCmd::FlushReq);
+    if (!memSidePort.sendTimingReq(pkt)) { 
+        //DPRINTF(PIM, "failed to send flush packet. Will try again\n");
+        fatal("failed to send flush packet\n");
+    } else {
+        DPRINTF(PIM, "flush packet sent. Waiting for response\n");
+    }
+    return true;
+}
+
+bool BaseCache::completeDownstreamFlush(PacketPtr pkt, Tick delay) {
+    // All downstream caches have been flushed. Indicate this to the waiting upstream component so that it can proceed.
+    DPRINTF(PIM, "completeDownstreamFlush\n");
+    pkt->makeTimingResponse();
+    cpuSidePort.schedTimingResp(pkt, delay);
     return true;
 }
 

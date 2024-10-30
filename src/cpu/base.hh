@@ -690,11 +690,15 @@ class BaseCPU : public ClockedObject
     int host_id;
 
     virtual void PIMProcess(ThreadContext *tc, int id) {
-        fatal("Base CPU cannot PIMProcess");
+        fatal("Base CPU cannot PIMProcess\n");
     }
 
     virtual void HostProcess(ThreadContext *tc, int id) {
-        fatal("Base CPU cannot execute HostProcess");
+        fatal("Base CPU cannot execute HostProcess\n");
+    }
+
+    virtual void activatePIM() {
+        fatal("Base CPU cannot activate PIM\n");
     }
 
 

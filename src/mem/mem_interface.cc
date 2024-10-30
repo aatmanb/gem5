@@ -71,7 +71,19 @@ MemInterface::MemInterface(const MemInterfaceParams &_p)
       readBufferSize(_p.read_buffer_size),
       writeBufferSize(_p.write_buffer_size),
       numWritesQueued(0)
-{}
+{
+    DPRINTF(PIM, "devices_per_rank: %d\n", _p.devices_per_rank);
+    DPRINTF(PIM, "burst_length: %d\n", _p.burst_length);
+    DPRINTF(PIM, "device_bus_width: %d\n", _p.device_bus_width);
+    DPRINTF(PIM, "device_size: %d\n", _p.device_size);
+    DPRINTF(PIM, "device_rowbuffer_size: %d\n", _p.device_rowbuffer_size);
+    DPRINTF(PIM, "rowbuffer_size: %d\n", rowBufferSize);
+    DPRINTF(PIM, "bursts_per_rowbuffer: %d\n", burstsPerRowBuffer);
+    DPRINTF(PIM, "bursts_per_stripe: %d\n", burstsPerStripe);
+    DPRINTF(PIM, "ranks_per_channel: %d\n", _p.ranks_per_channel);
+    DPRINTF(PIM, "banks_per_rank: %d\n", _p.banks_per_rank);
+    DPRINTF(PIM, "addr_range: %s\n", range.to_string());
+}
 
 void
 MemInterface::setCtrl(MemCtrl* _ctrl, unsigned int command_window,

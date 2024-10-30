@@ -188,12 +188,17 @@ if args.smt and args.num_cpus > 1:
 
 np = args.num_cpus
 mp0_path = multiprocesses[0].executable
+print(args.mem_size)
 system = System(
     cpu=[CPUClass(cpu_id=i) for i in range(np)],
     mem_mode=test_mem_mode,
     mem_ranges=[AddrRange(args.mem_size)],
+    #mem_ranges=[AddrRange(0, int(args.mem_size/2)),
+    #            AddrRange(int(args.mem_size/2)+1, args.mem_size)],
     cache_line_size=args.cacheline_size,
 )
+
+print(system.mem_ranges)
 
 if numThreads > 1:
     system.multi_thread = True

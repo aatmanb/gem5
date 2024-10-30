@@ -172,6 +172,7 @@ CoherentXBar::recvTimingReq(PacketPtr pkt, PortID cpu_side_port_id)
 
     DPRINTF(CoherentXBar, "%s: src %s packet %s\n", __func__,
             src_port->name(), pkt->print());
+    DPRINTF(PIM, "recvTimingReq: pkt->isFromPIM: %d\n", pkt->isFromPIM());
 
     // store size and command as they might be modified when
     // forwarding the packet
@@ -197,7 +198,8 @@ CoherentXBar::recvTimingReq(PacketPtr pkt, PortID cpu_side_port_id)
     const bool is_destination = isDestination(pkt);
 
     const bool snoop_caches = !system->bypassCaches() &&
-        pkt->cmd != MemCmd::WriteClean;
+        pkt->cmd != MemCmd::WriteClean &&
+        !pkt->isFromPIM();
     if (snoop_caches) {
         assert(pkt->snoopDelay == 0);
 
@@ -466,6 +468,7 @@ CoherentXBar::recvTimingResp(PacketPtr pkt, PortID mem_side_port_id)
 
     DPRINTF(CoherentXBar, "%s: src %s packet %s\n", __func__,
             src_port->name(), pkt->print());
+    DPRINTF(PIM, "recvTimingResp: pkt->isFromPIM: %d\n", pkt->isFromPIM());
 
     // store size and command as they might be modified when
     // forwarding the packet
@@ -481,7 +484,7 @@ CoherentXBar::recvTimingResp(PacketPtr pkt, PortID mem_side_port_id)
     // determine how long to be crossbar layer is busy
     Tick packetFinishTime = clockEdge(headerLatency) + pkt->payloadDelay;
 
-    if (snoopFilter && !system->bypassCaches()) {
+    if (snoopFilter && !system->bypassCaches() && !pkt->isFromPIM()) {
         // let the snoop filter inspect the response and update its state
         snoopFilter->updateResponse(pkt, *cpuSidePorts[cpu_side_port_id]);
     }

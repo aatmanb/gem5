@@ -357,6 +357,30 @@ class DDR3_1600_8x8(DRAMInterface):
     IDD6 = "20mA"
     VDD = "1.5V"
 
+class myDRAM(DDR3_1600_8x8):
+    addr_mapping = "RoRaChCoBaCo"
+    
+    # size of device in bytes
+    device_size = "128MiB"
+
+    # 8x8 configuration, 8 devices each with an 8-bit interface
+    device_bus_width = 8
+
+    # DDR3 is a BL8 device
+    burst_length = 8
+
+    # Each device has a page (row buffer) size of 1 Kbyte (1K columns x8)
+    device_rowbuffer_size = "1KiB"
+
+    # 8x8 configuration, so 8 devices
+    devices_per_rank = 8
+
+    # Use two ranks
+    ranks_per_channel = 2
+
+    banks_per_rank = 16
+    
+
 
 # A single HMC-2500 x32 model based on:
 # [1] DRAMSpec: a high-level DRAM bank modelling tool

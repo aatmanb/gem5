@@ -166,6 +166,12 @@ class BaseCache(ClockedObject):
     # data cache.
     write_allocator = Param.WriteAllocator(NULL, "Write allocator")
 
+    
+    # @PIM
+    # Indicates if the cache is the last level cache. Used to decide whether
+    # it should send flush request downstream. If LLC, do not send.
+    is_llc = Param.Bool(False, "Last-level cache")
+
 
 class Cache(BaseCache):
     type = "Cache"
